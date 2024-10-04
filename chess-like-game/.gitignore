@@ -4,7 +4,8 @@
 
 nodemon.json
 # dependencies
-/node_modules
+/backend/node_modules
+
 /.pnp
 .pnp.js
 
