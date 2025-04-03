@@ -13,6 +13,20 @@
 
 //     useEffect(() => {
 //         if (socket) {
+//             socket.on('message', (message) => {
+//         console.log('Message:', message);
+//     });
+
+//     socket.on('connect', () => {
+//         console.log('New client connected:', socket.id);
+    
+//         socket.on('message', (message) => {
+//             console.log('Message:', message);
+//         });
+    
+//         console.log('Emitting welcome message');
+//         socket.emit('message', 'Welcome to the client!');
+//     });
 //             socket.on('startGame', (data) => {
 //                 console.log('Game starting with initial state:', data.initialState);
 //                 setGameState(data.initialState.gameState);
@@ -27,20 +41,11 @@
 //                 setError(data.message);
 //             });
 
-//             // Handle receiving the game state
 //             socket.on('updateGameState', ({ gameState, currentPlayer }) => {
-//                 console.log('Game state received:', gameState);
+//                 console.log('Game state received:', gameState); // Debugging statement
 //                 setGameState(gameState);
 //                 setCurrentPlayer(currentPlayer);
 //             });
-
-//             // Handle receiving the current player update
-//             socket.on('updateCurrentPlayer', ({ currentPlayer }) => {
-//                 console.log('Current player is now:', currentPlayer);
-//                 setCurrentPlayer(currentPlayer);
-//             });
-
-
 
 //             socket.on('gameOver', ({ winner }) => {
 //                 alert(`Game over! Player ${winner} wins!`);
@@ -78,50 +83,68 @@
 //             };
 //         }
 //     }, [socket, roomId]);
+
+//     // Function to handle a move
 //     function handleMove(startPosition, endPosition) {
 //         console.log("Attempting move:");
 //         console.log("Start Position:", startPosition);
 //         console.log("End Position:", endPosition);
-    
+
+//         // Validate move positions
 //         if (!startPosition || !endPosition) {
 //             console.error("Move positions are undefined");
 //             return;
 //         }
-    
+
+//         // Ensure it's the correct player's turn
 //         if (currentPlayer !== player) {
 //             alert("It's not your turn!");
 //             return;
 //         }
-    
+
+//         // Retrieve the character at the start position
 //         const character = gameState[startPosition];
-//         if (!character || character.player !== player) {
-//             console.error("Invalid move: No character at startPosition or not your piece.");
+//         if (!character) {
+//             console.error("Invalid move: No character at startPosition.");
 //             return;
 //         }
-    
-//         // Emit the move
-//         socket.emit('makeMove', {
-//             roomId: roomId,
-//             from: startPosition,
-//             to: endPosition,
-//             player: currentPlayer
+
+//         if (character.player !== player) {
+//             console.error("Invalid move: This is not your piece.");
+//             return;
+//         }
+
+//         // Log character details for debugging
+//         console.log("Character being moved:", character);
+
+//         // Update local game state
+//         const newGameState = { ...gameState };
+//         newGameState[endPosition] = newGameState[startPosition];
+//         delete newGameState[startPosition];
+
+//         // Temporarily update local state for immediate feedback
+//         setGameState(newGameState);
+//         setCurrentPlayer(currentPlayer === 'A' ? 'B' : 'A');
+
+//         // Emit the move to the server, specifying the room ID and updated game state
+//         socket.emit('makeMove', roomId, newGameState, (response) => {
+//             if (response.error) {
+//                 console.error(response.error);
+//                 // Optionally revert to previous state if there was an error
+//                 setGameState(gameState);
+//                 return;
+//             }
+//             console.log("Move successfully sent to server.");
 //         });
 //     }
-    
-    
-    
-    
 
-//     // const handleMove = (from, to) => {
-//     //     if (currentPlayer === player) {
-//     //         const oldPosition = from;
-//     //         const newPosition = to;
-//     //         // Assuming GameBoard or another component provides the updated game state
-//     //         socket.emit('makeMove', { roomId, playerId: player, oldPosition, newPosition, captured: null, gameState });
-//     //     } else {
-//     //         alert("It's not your turn!");
-//     //     }
-//     // };
+//     // Listen for server broadcast of updated game state
+//     socket.on('updateGameState', (updatedGameState) => {
+//         console.log("Received updated game state from server:", updatedGameState);
+//         setGameState(updatedGameState);  // Update the local state to reflect server's game state
+//         setCurrentPlayer(currentPlayer === 'A' ? 'B' : 'A');  // Update turn
+//     });
+
 
 //     return (
 //         <div>
@@ -129,7 +152,6 @@
 //                 <h5>Room ID: {roomId}</h5>
 //             </div>
 
-//             {/* Show the error message only if the game hasn't started yet */}
 //             {gameState === null && error && <p style={{ color: 'red' }}>{error}</p>}
 //             {waitingForPlayer ? (
 //                 <p>Waiting for another player to join...</p>
@@ -147,6 +169,7 @@
 // };
 
 // export default Game;
+
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import PropTypes from 'prop-types'; 
@@ -159,25 +182,22 @@ const Game = ({ socket }) => {
     const [currentPlayer, setCurrentPlayer] = useState('A');
     const [error, setError] = useState('');
     const [waitingForPlayer, setWaitingForPlayer] = useState(false);
+    
 
     useEffect(() => {
         if (socket) {
-            socket.on('message', (message) => {
-        console.log('Message:', message);
-    });
+            // Join room with a callback to handle errors or set player information
+            socket.emit('joinRoom', roomId, (response) => {
+                const { error, player } = response;
+                if (error) {
+                    setError(error);
+                } else {
+                    setPlayer(player);
+                }
+            });
 
-    socket.on('connect', () => {
-        console.log('New client connected:', socket.id);
-    
-        socket.on('message', (message) => {
-            console.log('Message:', message);
-        });
-    
-        console.log('Emitting welcome message');
-        socket.emit('message', 'Welcome to the client!');
-    });
+            // Listen for game start, waiting state, game state updates, and errors
             socket.on('startGame', (data) => {
-                console.log('Game starting with initial state:', data.initialState);
                 setGameState(data.initialState.gameState);
                 setCurrentPlayer(data.initialState.currentPlayer);
                 setWaitingForPlayer(false);
@@ -185,13 +205,11 @@ const Game = ({ socket }) => {
             });
 
             socket.on('waitingForPlayer', (data) => {
-                console.log(data.message);
                 setWaitingForPlayer(true);
                 setError(data.message);
             });
 
             socket.on('updateGameState', ({ gameState, currentPlayer }) => {
-                console.log('Game state received:', gameState);
                 setGameState(gameState);
                 setCurrentPlayer(currentPlayer);
             });
@@ -212,15 +230,7 @@ const Game = ({ socket }) => {
                 setError(message);
             });
 
-            socket.emit('joinRoom', roomId, (response) => {
-                const { error, player } = response;
-                if (error) {
-                    setError(error);
-                } else {
-                    setPlayer(player);
-                }
-            });
-
+            // Clean up listeners on unmount
             return () => {
                 socket.off('startGame');
                 socket.off('waitingForPlayer');
@@ -233,63 +243,34 @@ const Game = ({ socket }) => {
         }
     }, [socket, roomId]);
 
+    // Function to handle a move
     function handleMove(startPosition, endPosition) {
-        console.log("Attempting move:");
-        console.log("Start Position:", startPosition);
-        console.log("End Position:", endPosition);
-    
-        // Validate move positions
-        if (!startPosition || !endPosition) {
-            console.error("Move positions are undefined");
-            return;
-        }
-    
-        // Ensure it's the correct player's turn
+        // Check valid move
         if (currentPlayer !== player) {
             alert("It's not your turn!");
             return;
         }
-    
-        // Retrieve the character at the start position
-        const character = gameState[startPosition];
-        if (!character) {
-            console.error("Invalid move: No character at startPosition.");
-            return;
-        }
-    
-        if (character.player !== player) {
-            console.error("Invalid move: This is not your piece.");
-            return;
-        }
-    
-        // Log character details for debugging
-        console.log("Character being moved:", character);
-    
-        // Emit the move to the server
-        socket.emit('makeMove', {
-            roomId: roomId,
-            from: startPosition,
-            to: endPosition,
-            player: currentPlayer
-        });
-    
-        // Log the data being sent for debugging
-        console.log("Emitting move:", {
-            roomId: roomId,
-            from: startPosition,
-            to: endPosition,
-            player: currentPlayer
-        });
-    
-        // Update local game state (this can be modified based on your game logic)
+
+        // Update local game state and switch turn
         const newGameState = { ...gameState };
         newGameState[endPosition] = newGameState[startPosition];
         delete newGameState[startPosition];
-    
+
         setGameState(newGameState);
         setCurrentPlayer(currentPlayer === 'A' ? 'B' : 'A');
+
+        // Emit the move to the server with a callback
+        socket.emit('makeMove', roomId, newGameState, (response) => {
+            if (response.error) {
+                console.error(response.error);
+                setError(response.error);
+                // Optionally revert to previous state if there was an error
+                setGameState(gameState);
+            } else {
+                console.log("Move successfully sent to server.");
+            }
+        });
     }
-    
 
     return (
         <div>
